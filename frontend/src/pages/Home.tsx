@@ -69,6 +69,11 @@ export default function Home() {
   const [mode, setMode] = useState<"cost" | "perf">("cost");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // 유효성 검사 실패 시 어느 섹션으로 스크롤/강조할지 표시. nonce를 넣어서
+  // 같은 섹션에서 연속으로 검증 실패해도(예: 제출을 두 번 누름) 매번 다시 스크롤/강조되게 한다.
+  const [invalidSection, setInvalidSection] = useState<{ section: "selection" | "budget"; nonce: number } | null>(null);
+  const selectionSectionRef = useRef<HTMLDivElement>(null);
+  const budgetSectionRef = useRef<HTMLDivElement>(null);
 
   const mockActive = isMockMode();
 
@@ -89,6 +94,15 @@ export default function Home() {
       if (data) setUsageProfiles(data);
     });
   }, [mockActive]);
+
+  // 검증 실패로 invalidSection이 설정되면 해당 섹션으로 스크롤하고, 잠시 반짝인 뒤 강조를 해제한다.
+  useEffect(() => {
+    if (!invalidSection) return;
+    const target = invalidSection.section === "budget" ? budgetSectionRef.current : selectionSectionRef.current;
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    const timer = setTimeout(() => setInvalidSection(null), 1600);
+    return () => clearTimeout(timer);
+  }, [invalidSection]);
 
   const toggleGame = (id: number) => {
     setSelectedGameIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -134,10 +148,12 @@ export default function Home() {
   const handleSubmit = async () => {
     if (selectedGameIds.length === 0 && selectedUsageIds.length === 0) {
       setError("게임 또는 PC 용도를 하나 이상 선택해주세요.");
+      setInvalidSection({ section: "selection", nonce: Date.now() });
       return;
     }
     if (!budget || budget <= 0) {
       setError("예산을 입력해주세요.");
+      setInvalidSection({ section: "budget", nonce: Date.now() });
       return;
     }
     setLoading(true);
@@ -179,43 +195,45 @@ export default function Home() {
 
       {error && <div className="error-banner">{error}</div>}
 
-      <div className="result-section">
-        <h3>플레이할 게임 (여러 개 선택 가능)</h3>
-        <div className="option-row">
-          {games.map((g) => (
-            <button
-              key={g.id}
-              type="button"
-              className={`option-chip ${selectedGameIds.includes(g.id) ? "active" : ""}`}
-              onClick={() => toggleGame(g.id)}
-            >
-              {g.title}
-            </button>
-          ))}
+      <div ref={selectionSectionRef} className={invalidSection?.section === "selection" ? "section-invalid" : ""}>
+        <div className="result-section">
+          <h3>플레이할 게임 (여러 개 선택 가능)</h3>
+          <div className="option-row">
+            {games.map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                className={`option-chip ${selectedGameIds.includes(g.id) ? "active" : ""}`}
+                onClick={() => toggleGame(g.id)}
+              >
+                {g.title}
+              </button>
+            ))}
+          </div>
+          <p className="form-hint">2개 이상 선택하면 항목별로 더 높은 사양을 채택합니다.</p>
         </div>
-        <p className="form-hint">2개 이상 선택하면 항목별로 더 높은 사양을 채택합니다.</p>
+
+        <div className="result-section">
+          <h3>PC 용도 (여러 개 선택 가능, 게임과 함께 선택해도 됩니다)</h3>
+          <div className="option-row">
+            {usageProfiles.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                className={`option-chip ${selectedUsageIds.includes(u.id) ? "active" : ""}`}
+                onClick={() => toggleUsage(u.id)}
+              >
+                {u.display_name}
+              </button>
+            ))}
+          </div>
+          <p className="form-hint">게임을 선택하지 않고 용도만 골라도 됩니다 — 이 경우 입력하신 예산을 최대한 잘 쓴 견적을 보여드립니다.</p>
+        </div>
       </div>
 
-      <div className="result-section">
-        <h3>PC 용도 (여러 개 선택 가능, 게임과 함께 선택해도 됩니다)</h3>
-        <div className="option-row">
-          {usageProfiles.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              className={`option-chip ${selectedUsageIds.includes(u.id) ? "active" : ""}`}
-              onClick={() => toggleUsage(u.id)}
-            >
-              {u.display_name}
-            </button>
-          ))}
-        </div>
-        <p className="form-hint">게임을 선택하지 않고 용도만 골라도 됩니다 — 이 경우 입력하신 예산을 최대한 잘 쓴 견적을 보여드립니다.</p>
-      </div>
-
-      <div className="result-section">
+      <div className="result-section" ref={budgetSectionRef}>
         <h3>예산</h3>
-        <div className="form-group">
+        <div className={`form-group ${invalidSection?.section === "budget" ? "section-invalid" : ""}`}>
           <div className="budget-input-group">
             <input
               ref={budgetInputRef}
